@@ -1,0 +1,104 @@
+---
+title: "Assignment 7"
+author: "Lu Han"
+date: "2017年12月15日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#Upload data
+```{r}
+D1 <- read.csv("C:/Users/owner/Desktop/assignment7-lh2587-master/online.data.csv")
+
+#Visualization 
+```{r}
+#Start by creating histograms of the distributions for all variables (#HINT: look up "facet" in the ggplot documentation)
+install.packages("psych")
+library(plyr)
+library(psych)
+multi.hist(D1[,sapply(D1, is.numeric)])
+
+#Then visualize the relationships between variables
+pairs(D1[, 2:7])
+
+#Try to capture an intution about the data and the relationships
+###Most pairwise variables have clear linear relationships.
+###Post.test.score, forum.posts, and messages can sepearte level.up.
+
+#Classification tree
+```{r}
+#Create a classification tree that predicts whether a student "levels up" in the online course using three variables of your choice (As we did last time, set all controls to their minimums)
+library(rpart)
+rp <- rpart(factor(level.up)~post.test.score + messages + forum.posts, method="class", data=D1)
+printcp(rp)
+
+#Plot and generate a CP table for your tree 
+post(rp, file='',title='Tree1')
+
+#Generate a probability value that represents the probability that a student levels up based your classification tree 
+
+D1$pred <- predict(rp, type = "prob")[,2]#Last class we used type = "class" which predicted the classification for us, this time we are using type = "prob" to see the probability that our classififcation is based on.
+
+#Now you can generate the ROC curve for your model. You will need to install the package ROCR to do this.
+library(ROCR)
+
+#Plot the curve
+pred.detail <- prediction(D1$pred, D1$level.up) 
+plot(performance(pred.detail, "tpr", "fpr"))
+abline(0, 1, lty = 2)
+
+#Calculate the Area Under the Curve
+unlist(slot(performance(Pred2,"auc"), "y.values"))#Unlist liberates the AUC value from the "performance" object created by ROCR
+
+#Now repeat this process, but using the variables you did not use for the previous model and compare the plots & results of your two models. Which one do you think was the better model? Why?
+rp2 <- rpart(level.up~pre.test.score + av.assignment.score, method="class", data=D1)
+printcp(rp2) 
+post(rp2, file='',title='Tree2') # plot
+D1$pred2 <- predict(rp2, type = "prob")[,2]
+pred.detail2 <- prediction(D1$pred2, D1$level.up) 
+plot(performance(pred.detail2, "tpr", "fpr"))
+unlist(slot(performance(pred.detail2,"auc"), "y.values"))
+##The second model is better based on AUC(0.977 vs. 0.855). 
+###Based on ROC, the space of the first model is larger.
+
+#Thresholds
+```{r}
+#Look at the ROC plot for your first model. Based on this plot choose a probability threshold that balances capturing the most correct predictions against false positives. Then generate a new variable in your data set that classifies each student according to your chosen threshold.
+D1$level.up <- ifelse(D1$level.up=="yes", 1, 0)
+
+diagnostics <- function(thr){
+    pred <- sum(D1$pred > thr)
+    #diagnostics
+    accuracy <- pred / nrow(D1)
+    false.pos <- sum(D1$pred>thr & D1$level.up==0)
+    precision <- pred / (pred + false.pos)
+    false.neg <- sum(D1$pred<=thr & D1$level.up==1)
+    recall <- pred/(pred + false.neg)
+    #Kappa
+    D1$pred1 <- D1$pred > thr
+    table1 <- table(D1$level.up, D1$pred1)
+    matrix1 <- as.matrix(table1)
+    kappa = kappa(matrix1, exact = TRUE)/kappa(matrix1)
+    return(c(paste("accuracy: ", accuracy), paste("precision: ", precision), 
+             paste("recall: ",  recall), paste("kappa: ", kappa)))
+}
+
+diagnostics(.99)
+diagnostics(.9)
+diagnostics(.8)
+diagnostics(.7)
+diagnostics(.6)
+diagnostics(.05)
+diagnostics(.01)
+
+#Now choose a different threshold value and repeat these diagnostics. What conclusions can you draw about your two thresholds?
+
+###The threshhold of .6 and .7 are the best among all diagnostic measures. 
+
+###In terms of the values above .8, the kappa is 1, although other diagnostics are either 0 or not attainable. 
+
+###In terms of the values around .6 and .7, the kappa is around to .94, the accuracy is around .5 and the precision is around .8. 
+
+###In terms of the values below 1, the kappa is 1, the acccuracy and recall are 1, and the precision is .625. 
+###In this case, kappa does not seem to be a good measure, since all values of thresholds have relatively high kappa values.
+```
